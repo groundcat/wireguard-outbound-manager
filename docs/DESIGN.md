@@ -6,7 +6,7 @@ For a new locally generated connection, policy rule `10000` selects table `51888
 
 For a connection arriving on a non-tunnel interface, `WGOM_INBOUND` stores connection mark `0x6d000000`. The output mangle hook restores that mark on replies, and priority `6000` selects the main table. This includes SSH and web responses. Existing overlay rules at earlier priorities, including Tailscale's table lookup, retain first refusal so overlay sessions follow their own return path.
 
-When `/sys/fs/cgroup/system.slice/cloudflared.service` exists, `WGOM_BYPASS` applies the same main-route mark only to packets emitted by that cgroup. This keeps Cloudflare Tunnel's transport direct while unrelated application requests continue through WireGuard.
+When `/sys/fs/cgroup/system.slice/cloudflared.service` exists, table `51888` receives `throw` routes for Cloudflare Tunnel's documented IPv4 edge networks (`198.41.192.0/24`, `198.41.200.0/24`) and IPv6 edge network (`2606:4700:a0::/48`). Those destinations fall through to the main table at route lookup time, keeping tunnel transport direct without relying on late packet marks.
 
 There is no output filter or kill switch. When no tunnel is healthy, the manager removes its policy rules and the unchanged main table provides normal direct connectivity.
 

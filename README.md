@@ -14,7 +14,7 @@ It is intended for Debian and Ubuntu servers managed by systemd. It coexists wit
 - Operation is opportunistic and fail-open. If every fallback is exhausted, policy routes are removed immediately, ordinary direct internet access is restored, and periodic tunnel probing continues.
 - Graceful stop removes the interface, policy routes, rules, runtime files, and restores the changed runtime sysctl.
 - Firewall ownership is reconciled every health interval, making the service resilient to a ruleset reload.
-- Tailscale keeps control through its earlier policy rules. If the standard `cloudflared.service` cgroup is present, its tunnel-transport packets are narrowly marked for the main route so Cloudflare-delivered inbound traffic is not carried inside WireGuard.
+- Tailscale keeps control through its earlier policy rules. If the standard `cloudflared.service` cgroup is present, documented Cloudflare Tunnel edge networks are installed as `throw` routes ahead of the tunnel default. Those narrow destinations fall through to the main route so Cloudflare-delivered inbound traffic is not carried inside WireGuard.
 
 Read [docs/DESIGN.md](docs/DESIGN.md) before deploying to a remote-only production host.
 
