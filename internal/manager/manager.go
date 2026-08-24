@@ -194,7 +194,9 @@ func (m *Manager) selectBest(ctx context.Context, cs []tunnel.Config, skip map[s
 func (m *Manager) testCandidate(ctx context.Context, c tunnel.Config, n int) (time.Duration, error) {
 	name := "wgomt" + strconv.Itoa(n)
 	probeTable := strconv.Itoa(51900 + n)
-	probePriority := strconv.Itoa(19000 + n)
+	// Candidate-bound probes must run before the active tunnel's priority 10000
+	// rule, otherwise failover tests would be swallowed by the failed tunnel.
+	probePriority := strconv.Itoa(9000 + n)
 	_ = m.x.run(ctx, "ip", "link", "del", name)
 	_ = m.x.run(ctx, "ip", "-4", "rule", "del", "priority", probePriority, "oif", name, "table", probeTable)
 	if err := m.configure(ctx, c, name, tunnelMark); err != nil {
