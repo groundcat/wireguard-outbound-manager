@@ -32,6 +32,8 @@ sudo systemctl enable --now wireguard-outbound-manager
 
 The installer installs missing packages, tests and builds the Go program, and installs a hardened systemd unit. It records which packages were missing but does not automatically remove packages later, because another application may begin relying on them.
 
+The service capability set permits network administration, health probes, and privileged WireGuard listen ports. This supports hosts whose upstream firewall requires replies to return to a fixed local UDP port such as `443`.
+
 ## Operations
 
 ```sh

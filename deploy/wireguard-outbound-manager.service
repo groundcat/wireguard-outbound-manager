@@ -21,8 +21,8 @@ ProtectControlGroups=true
 ReadWritePaths=/run/wireguard-outbound-manager
 RuntimeDirectory=wireguard-outbound-manager
 RuntimeDirectoryMode=0700
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
 
 [Install]
 WantedBy=multi-user.target
