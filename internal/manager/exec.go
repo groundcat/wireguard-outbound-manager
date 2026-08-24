@@ -14,8 +14,8 @@ type runner struct {
 }
 
 func (r runner) run(ctx context.Context, name string, args ...string) error {
-	r.log.Printf("DEBUG command program=%s args=%q", name, args)
 	if r.dry {
+		r.log.Printf("DRY-RUN command program=%s args=%q", name, args)
 		return nil
 	}
 	c := exec.CommandContext(ctx, name, args...)
@@ -27,6 +27,7 @@ func (r runner) run(ctx context.Context, name string, args ...string) error {
 }
 func (r runner) output(ctx context.Context, name string, args ...string) (string, error) {
 	if r.dry {
+		r.log.Printf("DRY-RUN command program=%s args=%q", name, args)
 		return "", nil
 	}
 	c := exec.CommandContext(ctx, name, args...)

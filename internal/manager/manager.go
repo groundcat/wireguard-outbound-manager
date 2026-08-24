@@ -321,23 +321,25 @@ func (m *Manager) ensureFirewallFamily(ctx context.Context, ipt string) error {
 			return err
 		}
 	}
-	if err := m.x.run(ctx, ipt, "-t", "mangle", "-F", "WGOM_BYPASS"); err != nil {
-		return err
-	}
 	// cloudflared transports inbound requests over outbound sockets. When the
 	// standard systemd unit exists, keep only that cgroup on the main route.
 	if _, err := os.Stat("/sys/fs/cgroup/system.slice/cloudflared.service"); err == nil {
-		if err := m.x.run(ctx, ipt, "-t", "mangle", "-A", "WGOM_BYPASS", "-m", "cgroup", "--path", "system.slice/cloudflared.service", "-j", "MARK", "--set-xmark", inboundMark); err != nil {
-			return err
+		rule := []string{"-m", "cgroup", "--path", "system.slice/cloudflared.service", "-j", "MARK", "--set-xmark", inboundMark}
+		check := append([]string{"-t", "mangle", "-C", "WGOM_BYPASS"}, rule...)
+		if !m.x.ok(ctx, ipt, check...) {
+			args := append([]string{"-t", "mangle", "-A", "WGOM_BYPASS"}, rule...)
+			if err := m.x.run(ctx, ipt, args...); err != nil {
+				return err
+			}
 		}
 	}
-	if err := m.x.run(ctx, ipt, "-t", "mangle", "-F", "WGOM_INBOUND"); err != nil {
-		return err
-	}
 	for _, a := range [][]string{{"-i", iface, "-j", "RETURN"}, {"-i", "lo", "-j", "RETURN"}, {"-m", "conntrack", "--ctdir", "ORIGINAL", "-j", "CONNMARK", "--set-xmark", inboundMark}} {
-		args := append([]string{"-t", "mangle", "-A", "WGOM_INBOUND"}, a...)
-		if err := m.x.run(ctx, ipt, args...); err != nil {
-			return err
+		check := append([]string{"-t", "mangle", "-C", "WGOM_INBOUND"}, a...)
+		if !m.x.ok(ctx, ipt, check...) {
+			args := append([]string{"-t", "mangle", "-A", "WGOM_INBOUND"}, a...)
+			if err := m.x.run(ctx, ipt, args...); err != nil {
+				return err
+			}
 		}
 	}
 	restore := []string{"-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}
