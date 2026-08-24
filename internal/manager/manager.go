@@ -272,8 +272,20 @@ func (m *Manager) configure(ctx context.Context, c tunnel.Config, name, mark str
 }
 func (m *Manager) probe(ctx context.Context, name string) (time.Duration, error) {
 	start := time.Now()
-	err := m.x.run(ctx, "ping", "-n", "-I", name, "-c", "1", "-W", "5", m.cfg.ProbeIP)
-	return time.Since(start), err
+	pingErr := m.x.run(ctx, "ping", "-n", "-I", name, "-c", "1", "-W", "5", m.cfg.ProbeIP)
+	if pingErr == nil {
+		return time.Since(start), nil
+	}
+	// Some providers deliberately suppress ICMP. An interface-bound Cloudflare
+	// Trace request is a stronger fallback because it verifies real HTTPS egress.
+	ip, traceErr := m.traceIP(ctx, name)
+	if traceErr == nil && (m.directIP == "" || ip != m.directIP) {
+		return time.Since(start), nil
+	}
+	if traceErr == nil {
+		return time.Since(start), fmt.Errorf("probe used direct IP %s after ICMP failed: %w", ip, pingErr)
+	}
+	return time.Since(start), fmt.Errorf("ICMP probe failed (%v); Cloudflare Trace failed (%v)", pingErr, traceErr)
 }
 func (m *Manager) activate(ctx context.Context, c tunnel.Config) error {
 	_ = m.removePolicy(ctx)

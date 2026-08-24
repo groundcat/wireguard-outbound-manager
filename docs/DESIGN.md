@@ -12,7 +12,7 @@ There is no output filter or kill switch. When no tunnel is healthy, the manager
 
 ## Selection and failure handling
 
-Each configuration is brought up temporarily in an isolated probe table and tested with an interface-bound ICMP request. Probe rules use priorities `9000+`, ahead of active-tunnel selection at `10000`, so fallback candidates remain testable while the current tunnel is unhealthy. Successful candidates are ordered by measured elapsed time. The best candidate becomes `wgom0`. Cloudflare Trace then confirms that its egress IP differs from the direct baseline. A heartbeat repeats the interface-bound probe every 30 seconds; three consecutive failures trigger selection among the remaining candidates. If none work, WireGuard and its policy rules are removed; later heartbeat cycles probe for recovery while direct internet remains available.
+Each configuration is brought up temporarily in an isolated probe table and tested with interface-bound ICMP. If ICMP is suppressed, an interface-bound Cloudflare Trace HTTPS request provides the connectivity result instead. Probe rules use priorities `9000+`, ahead of active-tunnel selection at `10000`, so fallback candidates remain testable while the current tunnel is unhealthy. Successful candidates are ordered by measured elapsed time. The best candidate becomes `wgom0`. Cloudflare Trace then confirms that its egress IP differs from the direct baseline. A heartbeat repeats the probe every 30 seconds; three consecutive failures trigger selection among the remaining candidates. If none work, WireGuard and its policy rules are removed; later heartbeat cycles probe for recovery while direct internet remains available.
 
 ## Transactionality
 

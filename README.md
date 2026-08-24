@@ -42,7 +42,7 @@ sudo ./install.sh uninstall
 sudo ./install.sh uninstall --purge  # also deletes tunnel configurations
 ```
 
-The default heartbeat is every 30 seconds. After three consecutive failed probes, all other configurations are tested and the lowest-latency live candidate is activated. If none work, the service reports `waiting`, disconnects WireGuard, restores direct routing, and uses later heartbeat cycles to look for recovery. Cloudflare Trace records the direct and tunneled outbound IPs; a candidate is accepted only when the observed IP changes. Override service arguments with a systemd drop-in if required:
+The default heartbeat is every 30 seconds. Health uses interface-bound ICMP with Cloudflare Trace HTTPS as a fallback for providers that suppress ICMP. After three consecutive failed probes, all other configurations are tested and the lowest-latency live candidate is activated. If none work, the service reports `waiting`, disconnects WireGuard, restores direct routing, and uses later heartbeat cycles to look for recovery. Cloudflare Trace records the direct and tunneled outbound IPs; a candidate is accepted only when the observed IP changes. Override service arguments with a systemd drop-in if required:
 
 ```ini
 [Service]
