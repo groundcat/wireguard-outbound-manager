@@ -10,10 +10,11 @@ It is intended for Debian and Ubuntu servers managed by systemd. It coexists wit
 - Installation does not start or enable the service.
 - Tunnel configuration files must be root-only and are never copied into the repository.
 - The main routing tables and existing firewall chains are not modified.
-- Rules use dedicated `WGOM_*` chains, policy-table `51888`, priorities `5100/10000/10010`, and marks in `0x6d000000/0xff000000`.
+- Rules use dedicated `WGOM_*` chains, policy-table `51888`, priorities `6000/10000/10010`, and marks in `0x6d000000/0xff000000`. The inbound fallback is intentionally ordered after common overlay-network rules such as Tailscale's and before tunnel selection.
 - Operation is opportunistic and fail-open. If every fallback is exhausted, policy routes are removed immediately, ordinary direct internet access is restored, and periodic tunnel probing continues.
 - Graceful stop removes the interface, policy routes, rules, runtime files, and restores the changed runtime sysctl.
 - Firewall ownership is reconciled every health interval, making the service resilient to a ruleset reload.
+- Tailscale keeps control through its earlier policy rules. If the standard `cloudflared.service` cgroup is present, its tunnel-transport packets are narrowly marked for the main route so Cloudflare-delivered inbound traffic is not carried inside WireGuard.
 
 Read [docs/DESIGN.md](docs/DESIGN.md) before deploying to a remote-only production host.
 

@@ -290,7 +290,7 @@ func (m *Manager) activate(ctx context.Context, c tunnel.Config) error {
 			}
 			return err
 		}
-		_ = m.x.run(ctx, "ip", fam, "rule", "add", "priority", "5100", "fwmark", inboundMark, "table", "main")
+		_ = m.x.run(ctx, "ip", fam, "rule", "add", "priority", "6000", "fwmark", inboundMark, "table", "main")
 		_ = m.x.run(ctx, "ip", fam, "rule", "add", "priority", "10000", "not", "fwmark", tunnelMark, "table", table)
 		_ = m.x.run(ctx, "ip", fam, "rule", "add", "priority", "10010", "table", "main", "suppress_prefixlength", "0")
 	}
@@ -306,13 +306,28 @@ func (m *Manager) ensureFirewall(ctx context.Context) error {
 	return nil
 }
 func (m *Manager) ensureFirewallFamily(ctx context.Context, ipt string) error {
-	for _, spec := range [][]string{{"-t", "mangle", "-N", "WGOM_INBOUND"}} {
+	for _, spec := range [][]string{{"-t", "mangle", "-N", "WGOM_INBOUND"}, {"-t", "mangle", "-N", "WGOM_BYPASS"}} {
 		if !m.x.ok(ctx, ipt, append([]string{"-t", spec[1], "-S", spec[3]}, spec[4:]...)...) {
 			_ = m.x.run(ctx, ipt, spec...)
 		}
 	}
 	if !m.x.ok(ctx, ipt, "-t", "mangle", "-C", "PREROUTING", "-j", "WGOM_INBOUND") {
 		if err := m.x.run(ctx, ipt, "-t", "mangle", "-I", "PREROUTING", "1", "-j", "WGOM_INBOUND"); err != nil {
+			return err
+		}
+	}
+	if !m.x.ok(ctx, ipt, "-t", "mangle", "-C", "OUTPUT", "-j", "WGOM_BYPASS") {
+		if err := m.x.run(ctx, ipt, "-t", "mangle", "-I", "OUTPUT", "1", "-j", "WGOM_BYPASS"); err != nil {
+			return err
+		}
+	}
+	if err := m.x.run(ctx, ipt, "-t", "mangle", "-F", "WGOM_BYPASS"); err != nil {
+		return err
+	}
+	// cloudflared transports inbound requests over outbound sockets. When the
+	// standard systemd unit exists, keep only that cgroup on the main route.
+	if _, err := os.Stat("/sys/fs/cgroup/system.slice/cloudflared.service"); err == nil {
+		if err := m.x.run(ctx, ipt, "-t", "mangle", "-A", "WGOM_BYPASS", "-m", "cgroup", "--path", "system.slice/cloudflared.service", "-j", "MARK", "--set-xmark", inboundMark); err != nil {
 			return err
 		}
 	}
@@ -337,7 +352,7 @@ func (m *Manager) ensureFirewallFamily(ctx context.Context, ipt string) error {
 }
 func (m *Manager) removePolicy(ctx context.Context) error {
 	for _, fam := range []string{"-4", "-6"} {
-		_ = m.x.run(ctx, "ip", fam, "rule", "del", "priority", "5100", "fwmark", inboundMark, "table", "main")
+		_ = m.x.run(ctx, "ip", fam, "rule", "del", "priority", "6000", "fwmark", inboundMark, "table", "main")
 		_ = m.x.run(ctx, "ip", fam, "rule", "del", "priority", "10000", "not", "fwmark", tunnelMark, "table", table)
 		_ = m.x.run(ctx, "ip", fam, "rule", "del", "priority", "10010", "table", "main", "suppress_prefixlength", "0")
 		_ = m.x.run(ctx, "ip", fam, "route", "flush", "table", table)
@@ -347,7 +362,7 @@ func (m *Manager) removePolicy(ctx context.Context) error {
 func (m *Manager) cleanup(ctx context.Context) {
 	_ = m.removePolicy(ctx)
 	for _, ipt := range []string{"iptables", "ip6tables"} {
-		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
+		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_BYPASS"}, {"-t", "mangle", "-F", "WGOM_BYPASS"}, {"-t", "mangle", "-X", "WGOM_BYPASS"}, {"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
 			_ = m.x.run(ctx, ipt, x...)
 		}
 	}
@@ -361,7 +376,7 @@ func (m *Manager) deactivate(ctx context.Context) {
 	_ = m.removePolicy(ctx)
 	_ = m.x.run(ctx, "ip", "link", "del", iface)
 	for _, ipt := range []string{"iptables", "ip6tables"} {
-		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
+		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_BYPASS"}, {"-t", "mangle", "-F", "WGOM_BYPASS"}, {"-t", "mangle", "-X", "WGOM_BYPASS"}, {"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
 			_ = m.x.run(ctx, ipt, x...)
 		}
 	}

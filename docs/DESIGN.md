@@ -4,7 +4,9 @@
 
 For a new locally generated connection, policy rule `10000` selects table `51888`, whose default route is `wgom0`. WireGuard's own UDP socket carries mark `0x6d100000`, so it bypasses that rule and reaches its endpoint through the unchanged main table.
 
-For a new connection arriving on a non-tunnel interface, `WGOM_INBOUND` stores connection mark `0x6d000000`. The output mangle hook restores that mark on replies, and priority `5100` selects the main table. This includes SSH and web responses. Existing Tailscale transport marks are explicitly exempt and Tailscale's earlier policy rules retain control.
+For a connection arriving on a non-tunnel interface, `WGOM_INBOUND` stores connection mark `0x6d000000`. The output mangle hook restores that mark on replies, and priority `6000` selects the main table. This includes SSH and web responses. Existing overlay rules at earlier priorities, including Tailscale's table lookup, retain first refusal so overlay sessions follow their own return path.
+
+When `/sys/fs/cgroup/system.slice/cloudflared.service` exists, `WGOM_BYPASS` applies the same main-route mark only to packets emitted by that cgroup. This keeps Cloudflare Tunnel's transport direct while unrelated application requests continue through WireGuard.
 
 There is no output filter or kill switch. When no tunnel is healthy, the manager removes its policy rules and the unchanged main table provides normal direct connectivity.
 
@@ -25,7 +27,7 @@ systemctl stop wireguard-outbound-manager
 ip link delete wgom0 2>/dev/null || true
 ip -4 rule delete priority 10000 2>/dev/null || true
 ip -4 rule delete priority 10010 2>/dev/null || true
-ip -4 rule delete priority 5100 2>/dev/null || true
+ip -4 rule delete priority 6000 2>/dev/null || true
 iptables -t filter -D OUTPUT -j WGOM_OUTPUT 2>/dev/null || true
 iptables -t filter -F WGOM_OUTPUT 2>/dev/null || true
 iptables -t filter -X WGOM_OUTPUT 2>/dev/null || true
