@@ -1,0 +1,28 @@
+[Unit]
+Description=WireGuard Outbound Manager
+Documentation=https://github.com/groundcat/wireguard-outbound-manager
+Wants=network-online.target
+After=network-online.target netfilter-persistent.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/wgom run
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=20s
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=false
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/run/wireguard-outbound-manager
+RuntimeDirectory=wireguard-outbound-manager
+RuntimeDirectoryMode=0700
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+config/*.conf
+*.conf
+wireguard-outbound-manager
+dist/
+coverage.out
