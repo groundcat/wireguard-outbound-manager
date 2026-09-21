@@ -30,15 +30,16 @@ const (
 )
 
 type Settings struct {
-	ConfigDir string
-	Interval  time.Duration
-	Failures  int
-	ProbeIP   string
-	DryRun    bool
+	ConfigDir  string
+	Interval   time.Duration
+	Failures   int
+	ProbeIP    string
+	DryRun     bool
+	MailBypass bool
 }
 
 func DefaultSettings() Settings {
-	return Settings{ConfigDir: "/etc/wireguard-outbound-manager/tunnels", Interval: 30 * time.Second, Failures: 3, ProbeIP: "1.1.1.1"}
+	return Settings{ConfigDir: "/etc/wireguard-outbound-manager/tunnels", Interval: 30 * time.Second, Failures: 3, ProbeIP: "1.1.1.1", MailBypass: true}
 }
 
 type Status struct {
@@ -363,25 +364,34 @@ func (m *Manager) ensureFirewallFamily(ctx context.Context, ipt string) error {
 			return err
 		}
 	}
-	for _, spec := range [][]string{{"-t", "mangle", "-N", "WGOM_MAIL"}} {
-		if !m.x.ok(ctx, ipt, append([]string{"-t", spec[1], "-S", spec[3]}, spec[4:]...)...) {
-			_ = m.x.run(ctx, ipt, spec...)
+	if m.cfg.MailBypass {
+		for _, spec := range [][]string{{"-t", "mangle", "-N", "WGOM_MAIL"}} {
+			if !m.x.ok(ctx, ipt, append([]string{"-t", spec[1], "-S", spec[3]}, spec[4:]...)...) {
+				_ = m.x.run(ctx, ipt, spec...)
+			}
 		}
-	}
-	mail := []string{"-p", "tcp", "-m", "multiport", "--dports", mailPorts, "-j", "MARK", "--set-xmark", tunnelMark + "/0xffffffff"}
-	mailCheck := append([]string{"-t", "mangle", "-C", "WGOM_MAIL"}, mail...)
-	if !m.x.ok(ctx, ipt, mailCheck...) {
-		args := append([]string{"-t", "mangle", "-A", "WGOM_MAIL"}, mail...)
-		if err := m.x.run(ctx, ipt, args...); err != nil {
-			return err
+		mail := []string{"-p", "tcp", "-m", "multiport", "--dports", mailPorts, "-j", "MARK", "--set-xmark", tunnelMark + "/0xffffffff"}
+		mailCheck := append([]string{"-t", "mangle", "-C", "WGOM_MAIL"}, mail...)
+		if !m.x.ok(ctx, ipt, mailCheck...) {
+			args := append([]string{"-t", "mangle", "-A", "WGOM_MAIL"}, mail...)
+			if err := m.x.run(ctx, ipt, args...); err != nil {
+				return err
+			}
 		}
-	}
-	if !m.x.ok(ctx, ipt, "-t", "mangle", "-C", "OUTPUT", "-j", "WGOM_MAIL") {
-		if err := m.x.run(ctx, ipt, "-t", "mangle", "-I", "OUTPUT", "1", "-j", "WGOM_MAIL"); err != nil {
-			return err
+		if !m.x.ok(ctx, ipt, "-t", "mangle", "-C", "OUTPUT", "-j", "WGOM_MAIL") {
+			if err := m.x.run(ctx, ipt, "-t", "mangle", "-I", "OUTPUT", "1", "-j", "WGOM_MAIL"); err != nil {
+				return err
+			}
 		}
+	} else {
+		m.removeMailBypass(ctx, ipt)
 	}
 	return nil
+}
+func (m *Manager) removeMailBypass(ctx context.Context, ipt string) {
+	for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_MAIL"}, {"-t", "mangle", "-F", "WGOM_MAIL"}, {"-t", "mangle", "-X", "WGOM_MAIL"}} {
+		_ = m.x.run(ctx, ipt, x...)
+	}
 }
 func (m *Manager) removePolicy(ctx context.Context) error {
 	for _, fam := range []string{"-4", "-6"} {
@@ -395,7 +405,8 @@ func (m *Manager) removePolicy(ctx context.Context) error {
 func (m *Manager) cleanup(ctx context.Context) {
 	_ = m.removePolicy(ctx)
 	for _, ipt := range []string{"iptables", "ip6tables"} {
-		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_MAIL"}, {"-t", "mangle", "-F", "WGOM_MAIL"}, {"-t", "mangle", "-X", "WGOM_MAIL"}, {"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
+		m.removeMailBypass(ctx, ipt)
+		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
 			_ = m.x.run(ctx, ipt, x...)
 		}
 	}
@@ -409,7 +420,8 @@ func (m *Manager) deactivate(ctx context.Context) {
 	_ = m.removePolicy(ctx)
 	_ = m.x.run(ctx, "ip", "link", "del", iface)
 	for _, ipt := range []string{"iptables", "ip6tables"} {
-		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_MAIL"}, {"-t", "mangle", "-F", "WGOM_MAIL"}, {"-t", "mangle", "-X", "WGOM_MAIL"}, {"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
+		m.removeMailBypass(ctx, ipt)
+		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
 			_ = m.x.run(ctx, ipt, x...)
 		}
 	}

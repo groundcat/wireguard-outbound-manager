@@ -44,6 +44,7 @@ func main() {
 		fs.IntVar(&cfg.Failures, "failures", cfg.Failures, "consecutive failures before failover")
 		fs.StringVar(&cfg.ProbeIP, "probe-ip", cfg.ProbeIP, "IPv4 connectivity probe")
 		fs.BoolVar(&cfg.DryRun, "dry-run", false, "log changes without applying them")
+		fs.BoolVar(&cfg.MailBypass, "mail-bypass", cfg.MailBypass, "route outbound IMAP/POP3/SMTP ports around the tunnel")
 		_ = fs.Parse(os.Args[2:])
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
