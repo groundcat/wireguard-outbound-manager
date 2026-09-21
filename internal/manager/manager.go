@@ -22,6 +22,11 @@ const (
 	table       = "51888"
 	tunnelMark  = "0x6d100000"
 	inboundMark = "0x6d000000/0xff000000"
+	// mailPorts lists common IMAP/POP3/SMTP ports. Locally generated traffic to
+	// these ports is marked with tunnelMark so it is treated like WireGuard's
+	// own encapsulated packets: exempt from the "not fwmark tunnelMark" tunnel
+	// rule and left on the host's normal direct route instead of the VPN.
+	mailPorts = "25,465,587,110,995,143,993"
 )
 
 type Settings struct {
@@ -358,6 +363,24 @@ func (m *Manager) ensureFirewallFamily(ctx context.Context, ipt string) error {
 			return err
 		}
 	}
+	for _, spec := range [][]string{{"-t", "mangle", "-N", "WGOM_MAIL"}} {
+		if !m.x.ok(ctx, ipt, append([]string{"-t", spec[1], "-S", spec[3]}, spec[4:]...)...) {
+			_ = m.x.run(ctx, ipt, spec...)
+		}
+	}
+	mail := []string{"-p", "tcp", "-m", "multiport", "--dports", mailPorts, "-j", "MARK", "--set-xmark", tunnelMark + "/0xffffffff"}
+	mailCheck := append([]string{"-t", "mangle", "-C", "WGOM_MAIL"}, mail...)
+	if !m.x.ok(ctx, ipt, mailCheck...) {
+		args := append([]string{"-t", "mangle", "-A", "WGOM_MAIL"}, mail...)
+		if err := m.x.run(ctx, ipt, args...); err != nil {
+			return err
+		}
+	}
+	if !m.x.ok(ctx, ipt, "-t", "mangle", "-C", "OUTPUT", "-j", "WGOM_MAIL") {
+		if err := m.x.run(ctx, ipt, "-t", "mangle", "-I", "OUTPUT", "1", "-j", "WGOM_MAIL"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (m *Manager) removePolicy(ctx context.Context) error {
@@ -372,7 +395,7 @@ func (m *Manager) removePolicy(ctx context.Context) error {
 func (m *Manager) cleanup(ctx context.Context) {
 	_ = m.removePolicy(ctx)
 	for _, ipt := range []string{"iptables", "ip6tables"} {
-		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
+		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_MAIL"}, {"-t", "mangle", "-F", "WGOM_MAIL"}, {"-t", "mangle", "-X", "WGOM_MAIL"}, {"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
 			_ = m.x.run(ctx, ipt, x...)
 		}
 	}
@@ -386,7 +409,7 @@ func (m *Manager) deactivate(ctx context.Context) {
 	_ = m.removePolicy(ctx)
 	_ = m.x.run(ctx, "ip", "link", "del", iface)
 	for _, ipt := range []string{"iptables", "ip6tables"} {
-		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
+		for _, x := range [][]string{{"-t", "mangle", "-D", "OUTPUT", "-j", "WGOM_MAIL"}, {"-t", "mangle", "-F", "WGOM_MAIL"}, {"-t", "mangle", "-X", "WGOM_MAIL"}, {"-t", "mangle", "-D", "OUTPUT", "-m", "connmark", "--mark", inboundMark, "-j", "CONNMARK", "--restore-mark", "--nfmask", "0xff000000", "--ctmask", "0xff000000"}, {"-t", "mangle", "-D", "PREROUTING", "-j", "WGOM_INBOUND"}, {"-t", "mangle", "-F", "WGOM_INBOUND"}, {"-t", "mangle", "-X", "WGOM_INBOUND"}} {
 			_ = m.x.run(ctx, ipt, x...)
 		}
 	}

@@ -11,6 +11,7 @@ It is intended for Debian and Ubuntu servers managed by systemd. It coexists wit
 - Tunnel configuration files must be root-only and are never copied into the repository.
 - The main routing tables and existing firewall chains are not modified.
 - Rules use dedicated `WGOM_*` chains, policy-table `51888`, priorities `6000/10000/10010`, and marks in `0x6d000000/0xff000000`. The inbound fallback is intentionally ordered after common overlay-network rules such as Tailscale's and before tunnel selection.
+- Outbound IMAP, POP3, and SMTP traffic (ports `143`, `993`, `110`, `995`, `25`, `465`, `587`) is marked by chain `WGOM_MAIL` and always leaves through the host's normal direct route, never the WireGuard tunnel.
 - Operation is opportunistic and fail-open. If every fallback is exhausted, policy routes are removed immediately, ordinary direct internet access is restored, and periodic tunnel probing continues.
 - Graceful stop removes the interface, policy routes, rules, runtime files, and restores the changed runtime sysctl.
 - Firewall ownership is reconciled every health interval, making the service resilient to a ruleset reload.
